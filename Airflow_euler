@@ -1,0 +1,242 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Oct 18 10:44:30 2017
+
+@author: Eleonore Salma
+"""
+
+
+import numpy as np
+import scipy as scip
+import matplotlib.pyplot as plt
+import pandas as pd
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
+import pylab
+
+plt.close("all")
+
+
+## I. 1) For a trip from San Francisco to LasVegas 
+#_________________________Parameters___________________________________________
+N_airplanes = 20.# Number of airplanes in the path:
+T_final = 1.5 #hours # Travel time:
+X_final = 670. #km # Travel length:
+N_t = 200 # Number of points wanted in the timeline
+N_x = 67 # Number of points wanted along the travel length
+s_cruise = 900. #km/hours # Cruise speed of each airplane:
+
+T = np.linspace(0,T_final,N_t+1) 
+X = np.linspace(0,X_final,N_x+1)  
+dx=X_final/(N_x+1)
+dt=T_final/(N_t+1)
+# Some lengths:
+X_1 = X_final/10 #length of acceleration
+X_2 = X_final*9/10 #start of the deceleration
+X_3 = X_final*2/10 #length where airplanes are allocated at time 0
+# Creation of the lists of time and abcissas:
+X_A, X_r = X, X
+T_A, T_r = T, T
+
+print("dt =", dt*60,"minutes", "\ndx =", dx, "km")
+print("T =", T, "\nX =", X)
+print("Number of airplanes in the path =", N_airplanes)
+print("Cruise speed =", s_cruise, "km/hours")
+
+
+#_________________________Speeds___________________________________________
+
+def speed1(y) : # When the speed decreases linearly from the speed cruise to 0
+    return s_cruise - (s_cruise/X_final)*y
+
+def speed2(y) : # When the speed is constant and equals the cruise speed
+    return s_cruise
+
+def speed3(y) : # When the speed increases linearly from the 0 to the speed cruise until X_1
+                # and decreases linearly from the speed cruise to 0 between X_2 and the end
+    if y < X_1 :
+        return (s_cruise/X_1)*y
+    elif y > X_2 :
+        return -(s_cruise/(X_final-X_2))*y + s_cruise*X_final/(X_final-X_2)
+    else :
+        return s_cruise
+
+#********************CHOOSE SPEED PROFIL!!
+def speed(y):
+       return speed3 (y)
+
+# Creation of the list of the speed along the timeline
+V_speed = np.zeros(N_x+1)
+for i in range(N_x+1):
+    V_speed[i] = speed(X[i])
+print("The speed profile is: \n",V_speed)
+
+#_________________________Aiplanes Distributions_______________________________
+
+# Distribution of the airplanes evenly on the first X_3 km
+U_01 = np.zeros(N_x+1) # a list of zeros
+i = 1 
+n = 0
+while X[i] < X_3 :
+    i+=1
+for n in range(i):
+    # we start at i=1 because we assume that u(0,t) = 0
+    U_01[n+1] = U_01[n] + N_airplanes/i
+for m in range(i,N_x+1):
+    U_01[m] = N_airplanes
+for f in range(N_x+1):
+    U_01[f] = round(U_01[f])
+
+# Distribution of the airplanes evenly along the travel length
+U_02 = np.zeros(N_x+1) # a list of zeros
+for n in range(1,N_x+1):
+    # we start at i=1 because we assume that u(0,t) = 0
+    U_02[n] = U_02[n-1] + N_airplanes/N_x
+for i in range(1,N_x+1):
+    U_02[i] = U_02[i]
+    
+# Simple Distribution 
+U_03 = np.zeros(N_x+1)    
+for i in range(1,N_x+1):
+    U_03[i] = N_airplanes  
+
+#*****************************CHOOSE DISTRIBUTION!
+U_0 = U_01
+print("The initial state of the airplanes is: \n", U_0)
+
+
+#___________________________________PDE_______________________________________
+
+# U(x,t) is the number of airplanes between 0 and x at time t
+#Creation of the matrix of U(x,t) 
+# where rows are time t and columns are abcissa x
+
+M_U = np.zeros((N_t+1, N_x+1))
+M_U[0] = U_0
+
+#ENTRY FLUX 
+q=np.ones((1,N_t+1))
+print("The entry flux is \n", q)
+
+for N in range(0,N_t): #loop of time
+    for i in range(0,N_x): #loop of abscissa
+        M_U[N+1,i+1] = M_U[N,i+1]- dt/dx*(speed(X[i+1]))*(M_U[N,i+1]-M_U[N,i])
+#        print("Lambda \n=",dt/dx*(speed(X[i+1])))
+#print("U", M_U)
+#______________________________ Flux matrix of rho(x,t)_______________________ 
+ 
+rho_0 = np.zeros(N_x+1) 
+i = 1
+for i in range(1,N_x+1) :
+    rho_0[i] = (M_U[0,i]-M_U[0,i-1])/dx
+
+M_rho = np.zeros((N_t+1, N_x+1))
+M_rho[0] = rho_0
+
+for N in range(0,N_t): #time
+    for i in range(0,N_x): #abscisse
+        M_rho[N+1,i+1] = M_rho[N,i+1]- dt/dx*speed(X[i+1])*(M_rho[N,i+1]-M_rho[N,i])- dt/dx*(speed(X[i+1])-speed(X[i]))*M_rho[N,i+1]
+
+
+
+
+##### IV. OUTPUTS #####
+
+
+## IV. 1) v(x) 
+
+plt.figure("v(x)")
+plt.plot(X,V_speed)
+plt.xlabel('abscissa x (km)')
+plt.ylabel('speed v(x) (km/hours)')
+plt.title('Speed profile v(x) in the path')
+
+
+## IV. 2) U(x,t) 2D
+
+plt.figure("U(x,t) 2D")
+
+plt.plot(X,M_U[0])
+for N in range(0,N_t):
+    plt.plot(X,M_U[N+1])
+    
+plt.xlabel('abscissa x (km)')
+plt.ylabel('number of airplanes U(x,t) between 0 and x')
+plt.title('Distribution of airplanes along the path U(x,t)')
+
+
+## IV. 3) U(x,t) 3D
+
+X, T = np.meshgrid(X, T)
+Z = M_U
+
+# Plot the surface.
+fig = plt.figure("U(x,t) 3D")
+ax = fig.gca(projection='3d')
+
+surf = ax.plot_surface(X, T, Z, cmap=cm.coolwarm,
+                       linewidth=0, antialiased=False)
+
+# Customize the z axis.
+ax.zaxis.set_major_locator(LinearLocator(10))
+ax.zaxis.set_major_formatter(FormatStrFormatter('%.0f'))
+
+# Add a color bar which maps values to colors.
+fig.colorbar(surf, shrink=0.5, aspect=5)
+
+#add title and axis.
+
+ax.set_xlabel('abscissa x (km)')
+ax.set_ylabel('time t (hours)')
+ax.set_zlabel('number of airplanes between 0 and x U(x,t)')
+ax.text2D(0.05, 0.95, 'Distribution of airplanes along the path U(x,t)', transform=ax.transAxes)
+
+
+## IV. 3bis) Plot a 2D U(x,t) but with varying time using color
+
+fig, ax = plt.subplots()
+scat = ax.scatter(X, T, c=Z, s=200, marker='o')
+fig.colorbar(scat)
+pylab.pcolor(X, T, Z)
+pylab.show()
+
+
+## IV. 6) rho(x,t) 2D  
+
+plt.figure("rho(x,t) 2D")
+
+for N in range(0,N_t+1): 
+    plt.plot(X_r,M_rho[N])
+
+plt.xlabel('abscissa x (km)')
+plt.ylabel('number of airplanes A(x,t) at abscissa x')
+plt.title('Flux of airplanes along the path rho(x,t)')
+
+
+## IV. 7) rho(x,t) 3D
+
+X_r, T_r = np.meshgrid(X_r, T_r)
+Z_r = M_rho
+
+fig_r = plt.figure("rho(x,t) 3D")
+ax_r = fig_r.gca(projection='3d')
+
+surf_r = ax_r.plot_surface(X_r, T_r, Z_r, cmap=cm.coolwarm,
+                       linewidth=0, antialiased=False)
+
+# Customize the z axis.
+ax_r.zaxis.set_major_locator(LinearLocator(10))
+ax_r.zaxis.set_major_formatter(FormatStrFormatter('%.0f'))
+
+# Add a color bar which maps values to colors.
+fig_r.colorbar(surf_r, shrink=0.5, aspect=5)
+
+#add title and axis.
+ax_r.set_xlabel('abscissa x (km)')
+ax_r.set_ylabel('time t (hours)')
+ax_r.set_zlabel('flux of airplanes at x rho(x,t)')
+ax_r.text2D(0.05, 0.95, 'Flux of airplanes along the path rho(x,t)', transform=ax_r.transAxes)
+
+
+plt.show()
